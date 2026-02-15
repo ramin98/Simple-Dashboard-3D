@@ -22,6 +22,7 @@ export function ObjectForm({ designers, defaultValues, onSubmit, isLoading, subm
       name: "",
       designerId: "",
       color: "#3b82f6",
+      shape: "box",
       size: "normal",
       position: [0, 0, 0],
       ...defaultValues,
@@ -61,6 +62,28 @@ export function ObjectForm({ designers, defaultValues, onSubmit, isLoading, subm
                     {designers.map((d) => (
                       <SelectItem key={d.id} value={d.id}>{d.fullName}</SelectItem>
                     ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="shape"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Shape</FormLabel>
+                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select shape" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="box">Box</SelectItem>
+                    <SelectItem value="sphere">Sphere</SelectItem>
+                    <SelectItem value="cylinder">Cylinder</SelectItem>
                   </SelectContent>
                 </Select>
                 <FormMessage />

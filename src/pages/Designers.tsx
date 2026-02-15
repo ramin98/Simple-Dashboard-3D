@@ -91,7 +91,7 @@ export default function Designers() {
                 <h3 className="text-lg font-bold mb-1">{designer.fullName}</h3>
                 <p className="text-sm text-muted-foreground mb-4">ID: {designer.id}</p>
                 <div className="flex gap-2 flex-wrap mb-4">
-                  <Badge variant="secondary" className="font-normal">{designer.workingHours}h / day</Badge>
+                  <Badge variant="secondary" className="font-normal">{designer.workingHoursFrom} – {designer.workingHoursTo}</Badge>
                   <Badge variant={designer.attachedObjectsCount > 0 ? "default" : "outline"} className="font-normal">
                     {designer.attachedObjectsCount} Objects
                   </Badge>
@@ -141,7 +141,7 @@ function DesignerForm({ initialData, onSuccess }: { initialData?: InsertDesigner
   const { mutate: update, isPending: isUpdating } = useUpdateDesigner();
   const form = useForm<InsertDesigner>({
     resolver: zodResolver(insertDesignerSchema),
-    defaultValues: initialData || { fullName: "", workingHours: 8 },
+    defaultValues: initialData || { fullName: "", workingHoursFrom: 9, workingHoursTo: 17 },
   });
 
   const onSubmit = (data: InsertDesigner) => {
@@ -168,19 +168,34 @@ function DesignerForm({ initialData, onSuccess }: { initialData?: InsertDesigner
             </FormItem>
           )}
         />
-        <FormField
-          control={form.control}
-          name="workingHours"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Working Hours</FormLabel>
-              <FormControl>
-                <Input type="number" min={1} max={12} {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        <div className="grid grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
+            name="workingHoursFrom"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Работа с (час)</FormLabel>
+                <FormControl>
+                  <Input type="number" min={0} max={23} placeholder="9" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="workingHoursTo"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Работа до (час)</FormLabel>
+                <FormControl>
+                  <Input type="number" min={0} max={23} placeholder="17" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
         <div className="flex justify-end pt-4">
           <Button type="submit" disabled={isCreating || isUpdating}>
             {isCreating || isUpdating ? "Saving..." : initialData ? "Update" : "Create"}

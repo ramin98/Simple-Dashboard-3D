@@ -15,7 +15,7 @@ export default function Home() {
     { label: "Active Objects", value: objects?.length || 0, icon: Box, color: "text-indigo-500", bg: "bg-indigo-50" },
     {
       label: "Avg Working Hours",
-      value: designers?.length ? Math.round(designers.reduce((acc, d) => acc + d.workingHours, 0) / designers.length) + "h" : "0h",
+      value: designers?.length ? Math.round(designers.reduce((acc, d) => acc + (d.workingHoursTo - d.workingHoursFrom), 0) / designers.length) + "h" : "0h",
       icon: Activity,
       color: "text-emerald-500",
       bg: "bg-emerald-50",

@@ -1,11 +1,11 @@
 import { create } from "zustand";
 
 interface EditorState {
-  selectedObjectId: string | null;
-  setSelectedObjectId: (id: string | null) => void;
+  isDraggingObject: boolean;
+  setDraggingObject: (value: boolean) => void;
 }
 
 export const useEditorStore = create<EditorState>((set) => ({
-  selectedObjectId: null,
-  setSelectedObjectId: (id) => set({ selectedObjectId: id }),
+  isDraggingObject: false,
+  setDraggingObject: (value) => set({ isDraggingObject: value }),
 }));

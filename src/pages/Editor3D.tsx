@@ -1,14 +1,12 @@
-import { useState, Suspense, useRef, useEffect } from "react";
-import { Canvas } from "@react-three/fiber";
+import { useState, Suspense, useRef, useEffect, useCallback } from "react";
+import { Canvas, useThree, type ThreeEvent } from "@react-three/fiber";
 import {
   OrbitControls,
   Grid,
   Environment,
-  TransformControls,
   Html,
   ContactShadows,
   useCursor,
-  useThree,
 } from "@react-three/drei";
 import * as THREE from "three";
 import { Sidebar } from "@/components/Sidebar";
@@ -26,20 +24,59 @@ import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 
+const SCALE_BY_SIZE = { small: 0.6, normal: 1, large: 1.4 } as const;
+
+function getShapeAndYOffset(
+  shape: "box" | "sphere" | "cylinder",
+  size: string
+): { geometry: JSX.Element; yOffset: number } {
+  const scale = SCALE_BY_SIZE[size as keyof typeof SCALE_BY_SIZE] ?? 1;
+  const s = scale;
+  switch (shape) {
+    case "sphere":
+      return { geometry: <sphereGeometry args={[s * 0.5, 32, 32]} />, yOffset: s * 0.5 };
+    case "cylinder":
+      return { geometry: <cylinderGeometry args={[s * 0.5, s * 0.5, s * 1.2, 32]} />, yOffset: s * 0.6 };
+    default:
+      return { geometry: <boxGeometry args={[s, s, s]} />, yOffset: s * 0.5 };
+  }
+}
+
+type SceneObject = {
+  id: string;
+  position: [number, number, number];
+  size: string;
+  color: string;
+  name: string;
+  shape?: "box" | "sphere" | "cylinder";
+};
+
+const DRAG_THRESHOLD_PX = 5;
+const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const groundIntersect = new THREE.Vector3();
+
 function DraggableObject({
   data,
   isSelected,
   onSelect,
   onMove,
 }: {
-  data: { id: string; position: [number, number, number]; size: string; color: string; name: string };
+  data: SceneObject;
   isSelected: boolean;
   onSelect: (id: string) => void;
   onMove: (pos: [number, number, number]) => void;
 }) {
   const meshRef = useRef<THREE.Mesh>(null);
   const [hovered, setHover] = useState(false);
-  useCursor(hovered);
+  const draggingRef = useRef(false);
+  const pointerStartRef = useRef({ x: 0, y: 0 });
+  const { camera, gl } = useThree();
+  const raycasterRef = useRef(new THREE.Raycaster());
+  const ndcRef = useRef(new THREE.Vector2());
+  useCursor(hovered || draggingRef.current);
+
+  const shape = data.shape ?? (data.size === "small" ? "sphere" : data.size === "large" ? "cylinder" : "box");
+  const { geometry, yOffset } = getShapeAndYOffset(shape, data.size);
 
   useEffect(() => {
     if (meshRef.current && data.position) {
@@ -47,51 +84,91 @@ function DraggableObject({
     }
   }, [data.position]);
 
-  const geometry = {
-    small: <sphereGeometry args={[0.5, 32, 32]} />,
-    normal: <boxGeometry args={[1, 1, 1]} />,
-    large: <cylinderGeometry args={[0.5, 0.5, 1.5, 32]} />,
-  }[data.size] ?? <boxGeometry args={[1, 1, 1]} />;
+  const updatePositionFromPointer = useCallback(
+    (clientX: number, clientY: number) => {
+      if (!meshRef.current) return;
+      const rect = gl.domElement.getBoundingClientRect();
+      ndcRef.current.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+      ndcRef.current.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+      raycasterRef.current.setFromCamera(ndcRef.current, camera);
+      if (raycasterRef.current.ray.intersectPlane(groundPlane, groundIntersect)) {
+        meshRef.current.position.set(groundIntersect.x, yOffset, groundIntersect.z);
+      }
+    },
+    [camera, gl.domElement, yOffset]
+  );
 
-  const yOffset = data.size === "small" ? 0.5 : data.size === "large" ? 0.75 : 0.5;
+  const handlePointerDown = useCallback(
+    (e: ThreeEvent<PointerEvent>) => {
+      e.stopPropagation();
+      pointerStartRef.current = { x: e.clientX, y: e.clientY };
+      useEditorStore.getState().setDraggingObject(true);
+
+      const onDocPointerMove = (moveEvent: PointerEvent) => {
+        const dx = moveEvent.clientX - pointerStartRef.current.x;
+        const dy = moveEvent.clientY - pointerStartRef.current.y;
+        if (!draggingRef.current && (Math.abs(dx) > DRAG_THRESHOLD_PX || Math.abs(dy) > DRAG_THRESHOLD_PX)) {
+          draggingRef.current = true;
+        }
+        if (draggingRef.current) {
+          updatePositionFromPointer(moveEvent.clientX, moveEvent.clientY);
+        }
+      };
+
+      const onDocPointerUp = () => {
+        document.removeEventListener("pointermove", onDocPointerMove);
+        document.removeEventListener("pointerup", onDocPointerUp);
+        const wasDragging = draggingRef.current;
+        draggingRef.current = false;
+        if (wasDragging && meshRef.current) {
+          const { x, z } = meshRef.current.position;
+          meshRef.current.position.y = yOffset;
+          onMove([x, yOffset, z]);
+        } else {
+          const idToSelect = data.id;
+          requestAnimationFrame(() => onSelect(idToSelect));
+        }
+        requestAnimationFrame(() => {
+          useEditorStore.getState().setDraggingObject(false);
+        });
+      };
+
+      document.addEventListener("pointermove", onDocPointerMove);
+      document.addEventListener("pointerup", onDocPointerUp);
+    },
+    [yOffset, data.id, onSelect, onMove, updatePositionFromPointer]
+  );
+
+  const handlePointerUp = useCallback(
+    (_e: ThreeEvent<PointerEvent>) => {
+      if (!draggingRef.current) {
+        onSelect(data.id);
+      }
+    },
+    [data.id, onSelect]
+  );
 
   return (
-    <>
-      {isSelected && (
-        <TransformControls
-          object={meshRef}
-          mode="translate"
-          onMouseUp={() => {
-            if (meshRef.current) {
-              const { x, y, z } = meshRef.current.position;
-              onMove([x, y, z]);
-            }
-          }}
-        />
+    <mesh
+      ref={meshRef}
+      position={[data.position[0], data.position[1] ?? yOffset, data.position[2]]}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerOver={() => setHover(true)}
+      onPointerOut={() => setHover(false)}
+      castShadow
+      receiveShadow
+    >
+      {geometry}
+      <meshStandardMaterial color={data.color} emissive={isSelected ? "#444" : "#000"} roughness={0.2} metalness={0.5} />
+      {hovered && (
+        <Html position={[0, 1.5, 0]} center style={{ pointerEvents: "none" }}>
+          <div className="bg-black/80 text-white text-xs px-2 py-1 rounded whitespace-nowrap backdrop-blur-sm">
+            {data.name}
+          </div>
+        </Html>
       )}
-      <mesh
-        ref={meshRef}
-        position={[data.position[0], yOffset, data.position[2]]}
-        onClick={(e) => {
-          e.stopPropagation();
-          onSelect(data.id);
-        }}
-        onPointerOver={() => setHover(true)}
-        onPointerOut={() => setHover(false)}
-        castShadow
-        receiveShadow
-      >
-        {geometry}
-        <meshStandardMaterial color={data.color} emissive={isSelected ? "#444" : "#000"} roughness={0.2} metalness={0.5} />
-        {hovered && (
-          <Html position={[0, 1.5, 0]} center>
-            <div className="bg-black/80 text-white text-xs px-2 py-1 rounded whitespace-nowrap backdrop-blur-sm">
-              {data.name}
-            </div>
-          </Html>
-        )}
-      </mesh>
-    </>
+    </mesh>
   );
 }
 
@@ -101,7 +178,7 @@ function Scene({
   onMove,
   selectedId,
 }: {
-  objects: Array<{ id: string; position: [number, number, number]; size: string; color: string; name: string }> | undefined;
+  objects: SceneObject[] | undefined;
   onSelect: (id: string) => void;
   onMove: (id: string, pos: number[]) => void;
   selectedId: string | null;
@@ -134,8 +211,8 @@ export default function Editor3D() {
   const { mutate: createObject, isPending: isCreating } = useCreateObject();
   const { mutate: updateObject } = useUpdateObject();
   const { mutate: deleteObject } = useDeleteObject();
-  const { selectedObjectId, setSelectedObjectId } = useEditorStore();
   const { toast } = useToast();
+  const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createPos, setCreatePos] = useState<[number, number, number]>([0, 0, 0]);
 
@@ -155,8 +232,8 @@ export default function Editor3D() {
   return (
     <div className="h-screen flex bg-background overflow-hidden">
       <Sidebar />
-      <div className="flex-1 md:ml-64 flex relative">
-        <div className="w-80 border-r border-border bg-card flex flex-col z-10 shadow-xl">
+      <div className="flex-1 md:ml-64 flex relative min-w-0 overflow-hidden">
+        <div className="w-80 shrink-0 border-r border-border bg-card flex flex-col z-10 shadow-xl">
           <div className="p-4 border-b border-border">
             <h2 className="font-bold text-lg flex items-center gap-2">
               <Box className="w-5 h-5 text-primary" />
@@ -214,7 +291,7 @@ export default function Editor3D() {
                       <span className="font-medium text-sm">{d.fullName}</span>
                       <Badge variant="outline" className="text-xs">{d.attachedObjectsCount} items</Badge>
                     </div>
-                    <div className="text-xs text-muted-foreground">{d.workingHours} hrs/day</div>
+                    <div className="text-xs text-muted-foreground">{d.workingHoursFrom} – {d.workingHoursTo}</div>
                   </div>
                 ))}
               </div>
@@ -222,7 +299,7 @@ export default function Editor3D() {
           </Tabs>
         </div>
 
-        <div className="flex-1 relative bg-gradient-to-br from-gray-50 to-gray-200">
+        <div className="flex-1 min-w-0 relative bg-gradient-to-br from-gray-50 to-gray-200">
           <Canvas shadows camera={{ position: [5, 5, 5], fov: 50 }}>
             <Suspense fallback={null}>
               <Scene
@@ -241,7 +318,7 @@ export default function Editor3D() {
                 <meshBasicMaterial visible={false} />
               </mesh>
             </Suspense>
-            <OrbitControls makeDefault />
+            <OrbitControls makeDefault enabled={!useEditorStore((s) => s.isDraggingObject)} />
           </Canvas>
           <div className="absolute top-4 right-4 pointer-events-none">
             <Badge variant="secondary" className="bg-white/90 backdrop-blur shadow-sm">
@@ -254,7 +331,7 @@ export default function Editor3D() {
         </div>
 
         {selectedObjectId && selectedObject && (
-          <div className="w-72 border-l border-border bg-white z-20 shadow-xl flex flex-col">
+          <div className="absolute right-0 top-0 bottom-0 w-72 shrink-0 border-l border-border bg-white z-20 shadow-xl flex flex-col">
             <div className="p-4 border-b border-border flex justify-between items-center">
               <h3 className="font-bold">Properties</h3>
               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSelectedObjectId(null)}>
@@ -299,7 +376,12 @@ export default function Editor3D() {
               isLoading={isCreating}
               defaultValues={{ position: createPos }}
               onSubmit={(data) => {
-                createObject({ ...data, position: createPos }, { onSuccess: () => setCreateModalOpen(false) });
+                const shape = data.shape ?? "box";
+                const yOffset = getShapeAndYOffset(shape, data.size).yOffset;
+                createObject(
+                  { ...data, position: [createPos[0], yOffset, createPos[2]] },
+                  { onSuccess: () => setCreateModalOpen(false) }
+                );
               }}
             />
           </DialogContent>

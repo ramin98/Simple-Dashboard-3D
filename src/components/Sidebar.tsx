@@ -37,15 +37,6 @@ export function Sidebar() {
           );
         })}
       </nav>
-      <div className="p-4 border-t border-border">
-        <div className="bg-muted/50 rounded-xl p-4">
-          <h4 className="text-sm font-medium mb-1">Need Help?</h4>
-          <p className="text-xs text-muted-foreground mb-3">Check our documentation for 3D modeling tips.</p>
-          <button type="button" className="text-xs font-semibold text-primary hover:underline">
-            View Docs
-          </button>
-        </div>
-      </div>
     </aside>
   );
 }

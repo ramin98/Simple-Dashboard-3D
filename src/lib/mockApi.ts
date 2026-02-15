@@ -7,15 +7,28 @@ const STORAGE_KEY = "asset-manager-db";
 
 const INITIAL_DATA = {
   designers: [
-    { id: "d1", fullName: "Alice Johnson", workingHours: 8, attachedObjectsCount: 2, createdAt: Date.now() },
-    { id: "d2", fullName: "Bob Smith", workingHours: 6, attachedObjectsCount: 1, createdAt: Date.now() },
+    { id: "d1", fullName: "Alice Johnson", workingHoursFrom: 9, workingHoursTo: 17, attachedObjectsCount: 2, createdAt: Date.now() },
+    { id: "d2", fullName: "Bob Smith", workingHoursFrom: 10, workingHoursTo: 16, attachedObjectsCount: 1, createdAt: Date.now() },
   ] as Designer[],
   objects: [
-    { id: "o1", name: "Blue Cube", designerId: "d1", color: "#3b82f6", position: [-2, 0.5, 0], size: "normal", createdAt: Date.now() },
-    { id: "o2", name: "Red Sphere", designerId: "d1", color: "#ef4444", position: [2, 0.5, 0], size: "small", createdAt: Date.now() },
-    { id: "o3", name: "Green Cylinder", designerId: "d2", color: "#22c55e", position: [0, 1, -2], size: "large", createdAt: Date.now() },
+    { id: "o1", name: "Blue Cube", designerId: "d1", color: "#3b82f6", position: [-2, 0.5, 0], shape: "box", size: "normal", createdAt: Date.now() },
+    { id: "o2", name: "Red Sphere", designerId: "d1", color: "#ef4444", position: [2, 0.5, 0], shape: "sphere", size: "small", createdAt: Date.now() },
+    { id: "o3", name: "Green Cylinder", designerId: "d2", color: "#22c55e", position: [0, 0.6, -2], shape: "cylinder", size: "large", createdAt: Date.now() },
   ] as AppObject[],
 };
+
+function migrateDesigner(d: Record<string, unknown>): Designer {
+  const hasOld = "workingHours" in d && typeof (d as { workingHours?: number }).workingHours === "number";
+  const hasNew = "workingHoursFrom" in d && "workingHoursTo" in d;
+  if (hasNew || !hasOld)
+    return d as Designer;
+  const hours = (d as { workingHours: number }).workingHours;
+  return {
+    ...d,
+    workingHoursFrom: 9,
+    workingHoursTo: Math.min(23, 9 + hours),
+  } as Designer;
+}
 
 const getDb = () => {
   const stored = localStorage.getItem(STORAGE_KEY);
@@ -23,7 +36,9 @@ const getDb = () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_DATA));
     return INITIAL_DATA;
   }
-  return JSON.parse(stored) as typeof INITIAL_DATA;
+  const data = JSON.parse(stored) as typeof INITIAL_DATA;
+  data.designers = data.designers.map((d) => migrateDesigner(d as Record<string, unknown>));
+  return data;
 };
 
 const saveDb = (data: typeof INITIAL_DATA) => {
@@ -44,7 +59,8 @@ export const mockApi = {
         id: generateId(),
         createdAt: Date.now(),
         attachedObjectsCount: 0,
-        workingHours: Number(data.workingHours),
+        workingHoursFrom: Number(data.workingHoursFrom),
+        workingHoursTo: Number(data.workingHoursTo),
       };
       db.designers.push(newDesigner);
       saveDb(db);
@@ -56,7 +72,8 @@ export const mockApi = {
       const index = db.designers.findIndex((d) => d.id === id);
       if (index === -1) throw new Error("Designer not found");
       const updated = { ...db.designers[index], ...data };
-      if (data.workingHours != null) updated.workingHours = Number(data.workingHours);
+      if (data.workingHoursFrom != null) updated.workingHoursFrom = Number(data.workingHoursFrom);
+      if (data.workingHoursTo != null) updated.workingHoursTo = Number(data.workingHoursTo);
       db.designers[index] = updated;
       saveDb(db);
       return updated;
@@ -82,6 +99,7 @@ export const mockApi = {
         id: generateId(),
         createdAt: Date.now(),
         position: data.position ?? [0, 0, 0],
+        shape: data.shape ?? "box",
       };
       db.objects.push(newObject);
       const di = db.designers.findIndex((d) => d.id === data.designerId);

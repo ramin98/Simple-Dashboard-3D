@@ -3,7 +3,6 @@ import { Canvas, useThree, type ThreeEvent } from "@react-three/fiber";
 import {
   OrbitControls,
   Grid,
-  Environment,
   Html,
   ContactShadows,
   useCursor,
@@ -185,9 +184,9 @@ function Scene({
 }) {
   return (
     <>
-      <ambientLight intensity={0.5} />
+      <ambientLight intensity={0.6} />
+      <directionalLight position={[5, 10, 5]} intensity={1} castShadow shadow-mapSize={[1024, 1024]} />
       <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} castShadow />
-      <Environment preset="city" />
       <group position={[0, -0.01, 0]}>
         <Grid infiniteGrid fadeDistance={30} fadeStrength={5} />
         <ContactShadows resolution={1024} scale={40} blur={2} opacity={0.5} far={10} color="#000000" />
